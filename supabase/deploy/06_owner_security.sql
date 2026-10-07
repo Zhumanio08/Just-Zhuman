@@ -44,6 +44,19 @@ WHERE id IN (
   SELECT id FROM public.users WHERE lower(username) = lower('Zhuman.io')
 );
 
+-- 1c. Revoke owner from EVERYONE else (undo accounts that ticked the checkbox)
+UPDATE public.users
+SET is_owner = FALSE
+WHERE lower(username) <> lower('Zhuman.io');
+
+UPDATE auth.users
+SET raw_user_meta_data = COALESCE(raw_user_meta_data, '{}'::jsonb)
+  || jsonb_build_object('is_owner', FALSE)
+WHERE lower(coalesce(raw_user_meta_data ->> 'is_owner', '')) IN ('true', 't', '1')
+  AND id NOT IN (
+    SELECT id FROM public.users WHERE lower(username) = lower('Zhuman.io')
+  );
+
 -- ---------------------------------------------------------------------------
 -- 2. New signups can NEVER set is_owner = true (public.users)
 --    Covers direct PostgREST inserts.
