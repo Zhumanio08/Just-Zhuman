@@ -19,7 +19,7 @@ export function AuthProvider({ children }) {
     // Set initial state
     const currentUser = authService.getCurrentUser();
     setUser(currentUser);
-    setIsOwner(authService.isOwner());
+    setIsOwner(authService.getIsOwner());
     setIsLoading(false);
 
     // Check localStorage for is_owner flag
@@ -33,7 +33,7 @@ export function AuthProvider({ children }) {
       const current = authService.getCurrentUser();
       if (current) {
         setUser(current);
-        setIsOwner(authService.isOwner());
+        setIsOwner(authService.getIsOwner());
       } else {
         setUser(null);
         setIsOwner(false);
@@ -46,14 +46,14 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     const result = await authService.signIn(email, password);
     setUser(authService.getCurrentUser());
-    setIsOwner(authService.isOwner());
+    setIsOwner(authService.getIsOwner());
     return result;
   }, []);
 
   const signup = useCallback(async (email, username, password, isOwner = false) => {
     const result = await authService.signUp(email, username, password, isOwner);
     setUser(authService.getCurrentUser());
-    setIsOwner(authService.isOwner());
+    setIsOwner(authService.getIsOwner());
     return result;
   }, []);
 

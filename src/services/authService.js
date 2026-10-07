@@ -40,7 +40,8 @@ class AuthService {
         const persistedUser = localStorage.getItem('supabase_user');
         if (session && persistedUser) {
           this.user = session.user;
-          this.isOwner = persistedUser.user_metadata?.is_owner ?? false;
+          const parsedUser = JSON.parse(persistedUser);
+          this.isOwner = parsedUser?.user_metadata?.is_owner ?? false;
         }
       } catch (error) {
         console.error('Failed to parse persisted session:', error);
@@ -150,8 +151,9 @@ class AuthService {
 
   /**
    * Check if user is owner
+   * NB: named getIsOwner (not isOwner) to avoid shadowing the this.isOwner property
    */
-  isOwner() {
+  getIsOwner() {
     return this.isOwner;
   }
 
