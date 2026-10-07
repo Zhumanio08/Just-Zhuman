@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { authService } from '../services/authService';
+import supabase from '../services/supabaseClient';
 
 const AuthContext = createContext();
 
@@ -16,45 +17,71 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     authService.initListener();
 
-    // Set initial state
-    const currentUser = authService.getCurrentUser();
-    setUser(currentUser);
-    setIsOwner(authService.getIsOwner());
-    setIsLoading(false);
+    // Set initial state from the real session (async — the service cache
+    // alone may be stale on first load)
+    let alive = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!alive) return;
+      const sessionUser = data?.session?.user ?? authService.getCurrentUser();
+      setUser(sessionUser);
+      setIsOwner(
+        sessionUser?.user_metadata?.is_owner ?? authService.getIsOwner()
+      );
+      setIsLoading(false);
+    });
 
-    // Poll for auth state changes (fallback in case the listener fails)
-    const interval = setInterval(() => {
-      const current = authService.getCurrentUser();
-      if (current) {
-        setUser(current);
-        setIsOwner(authService.getIsOwner());
-      } else {
-        setUser(null);
-        setIsOwner(false);
+    // Direct subscription: instant UI updates, no 1s polling delay
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!alive) return;
+      const u = session?.user ?? null;
+      setUser(u);
+      setIsOwner(u?.user_metadata?.is_owner ?? false);
+      setIsLoading(false);
+    });
+
+    return () => {
+      alive = false;
+      try {
+        data?.subscription?.unsubscribe();
+      } catch {
+        // ignore
       }
-    }, 1000);
-
-    return () => clearInterval(interval);
+    };
   }, []);
 
   const login = useCallback(async (email, password) => {
     const result = await authService.signIn(email, password);
-    setUser(authService.getCurrentUser());
-    setIsOwner(authService.getIsOwner());
+    // signIn returns the fresh session — use it directly instead of the
+    // (async) service cache to avoid a race where the UI stays logged out
+    const u = result?.user ?? authService.getCurrentUser();
+    setUser(u);
+    setIsOwner(u?.user_metadata?.is_owner ?? authService.getIsOwner());
     return result;
   }, []);
 
   const signup = useCallback(async (email, username, password) => {
     const result = await authService.signUp(email, username, password);
-    setUser(authService.getCurrentUser());
-    setIsOwner(authService.getIsOwner());
+    // With email confirmation ON there is no session yet — stay logged out
+    // until the user confirms; with it OFF use the fresh session directly
+    const u = result?.session?.user ?? result?.user ?? null;
+    if (u) {
+      setUser(u);
+      setIsOwner(u?.user_metadata?.is_owner ?? false);
+    } else {
+      setUser(null);
+      setIsOwner(false);
+    }
     return result;
   }, []);
 
   const logout = useCallback(async () => {
-    await authService.signOut();
-    setUser(null);
-    setIsOwner(false);
+    try {
+      await authService.signOut();
+    } finally {
+      // Guarantee the UI logs out even if the network call failed
+      setUser(null);
+      setIsOwner(false);
+    }
   }, []);
 
   const value = {

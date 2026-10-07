@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -10,6 +11,7 @@ import { authService } from '../services/authService';
  */
 export default function Profile() {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const { t, dateLocale } = useLanguage();
   const [memberSince, setMemberSince] = useState(null);
 
@@ -41,6 +43,7 @@ export default function Profile() {
 
   const handleLogout = async () => {
     await logout();
+    navigate('/login', { replace: true });
   };
 
   let memberSinceText = t('unknown');

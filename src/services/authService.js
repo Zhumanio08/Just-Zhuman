@@ -9,6 +9,9 @@ class AuthService {
   constructor() {
     this.user = null;
     this.isOwner = false;
+    this.authSubscription = null;
+    // Legacy alias: older code treated this as an unsubscribe function.
+    // In supabase-js v2 it is { data: { subscription } } — never call it.
     this.listener = null;
   }
 
@@ -16,11 +19,23 @@ class AuthService {
    * Initialize auth state listener
    */
   initListener() {
-    if (this.listener) {
-      this.listener();
+    if (this.authSubscription) {
+      try {
+        this.authSubscription.unsubscribe();
+      } catch {
+        // ignore
+      }
+      this.authSubscription = null;
+    }
+    if (this.listener?.data?.subscription) {
+      try {
+        this.listener.data.subscription.unsubscribe();
+      } catch {
+        // ignore
+      }
     }
 
-    this.listener = supabase.auth.onAuthStateChange((event, session) => {
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
       this.user = session?.user ?? null;
       this.isOwner = session?.user?.user_metadata?.is_owner ?? false;
       localStorage.setItem('supabase_session', JSON.stringify(session));
@@ -31,6 +46,9 @@ class AuthService {
         localStorage.setItem('is_owner', 'false');
       }
     });
+
+    this.authSubscription = data?.subscription ?? null;
+    this.listener = data ? { data } : null;
 
     // Initial load
     const persistedSession = localStorage.getItem('supabase_session');
@@ -116,18 +134,25 @@ class AuthService {
    * Sign out
    */
   async signOut() {
-    if (this.listener) {
-      this.listener();
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    } finally {
+      if (this.authSubscription) {
+        try {
+          this.authSubscription.unsubscribe();
+        } catch {
+          // ignore
+        }
+        this.authSubscription = null;
+      }
       this.listener = null;
+      this.user = null;
+      this.isOwner = false;
+      localStorage.removeItem('supabase_session');
+      localStorage.removeItem('supabase_user');
+      localStorage.removeItem('is_owner');
     }
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-
-    this.user = null;
-    this.isOwner = false;
-    localStorage.removeItem('supabase_session');
-    localStorage.removeItem('supabase_user');
-    localStorage.removeItem('is_owner');
   }
 
   /**

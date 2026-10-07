@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -16,6 +17,7 @@ const SWATCHES = [
  */
 export default function Navbar() {
   const { user, isOwner, logout } = useAuth();
+  const navigate = useNavigate();
   const { mode, toggleMode, accentColor, setAccent } = useTheme();
   const { t, lang, toggleLang } = useLanguage();
 
