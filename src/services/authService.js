@@ -54,16 +54,17 @@ class AuthService {
    * @param {string} email
    * @param {string} username
    * @param {string} password
-   * @param {boolean} [isOwner=false]
    */
-  async signUp(email, username, password, isOwner = false) {
+  async signUp(email, username, password) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
           username,
-          is_owner: isOwner,
+          // Owner is granted server-side ONLY (see supabase/deploy/06_owner_security.sql).
+          // Never accept this flag from the client.
+          is_owner: false,
         },
       },
     });
@@ -71,7 +72,7 @@ class AuthService {
     if (error) throw error;
 
     // Create the user record in the users table
-    await this.createUserRecord(email, username, isOwner);
+    await this.createUserRecord(email, username);
 
     return data;
   }
@@ -79,7 +80,7 @@ class AuthService {
   /**
    * Create the user record in the users table
    */
-  async createUserRecord(email, username, isOwner = false) {
+  async createUserRecord(email, username) {
     const { data: { user } = {}, error } = await supabase.auth.getUser();
     if (error || !user) throw error || new Error('No authenticated user');
 
@@ -89,12 +90,12 @@ class AuthService {
       id: userId,
       email,
       username,
-      is_owner: isOwner,
+      is_owner: false,
     });
 
     if (insertError) throw insertError;
 
-    return { id: userId, email, username, is_owner: isOwner };
+    return { id: userId, email, username, is_owner: false };
   }
 
   /**

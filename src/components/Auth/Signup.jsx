@@ -4,7 +4,7 @@ import { useTheme } from '../../context/ThemeContext';
 
 /**
  * Signup Component
- * Email/username/password signup with owner option
+ * Email/username/password signup
  */
 export default function Signup() {
   const { signup, isLoading } = useAuth();
@@ -15,7 +15,6 @@ export default function Signup() {
     username: '',
     password: '',
     confirmPassword: '',
-    isOwner: false,
   });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,7 +53,7 @@ export default function Signup() {
     }
 
     try {
-      await signup(formData.email, formData.username, formData.password, formData.isOwner);
+      await signup(formData.email, formData.username, formData.password);
     } catch (err) {
       setError(err.message || 'Failed to sign up. Please try again.');
     } finally {
@@ -161,21 +160,6 @@ export default function Signup() {
                 autoComplete="new-password"
                 required
               />
-            </div>
-
-            {/* Owner checkbox */}
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isOwner"
-                name="isOwner"
-                checked={formData.isOwner}
-                onChange={handleChange}
-                className="rounded border-gray-300 text-primary focus:ring-primary/30"
-              />
-              <label htmlFor="isOwner" className="text-sm text-gray-700 dark:text-gray-300">
-                Mark as Owner (for the blog creator)
-              </label>
             </div>
 
             {/* Submit button */}

@@ -22,12 +22,6 @@ export function AuthProvider({ children }) {
     setIsOwner(authService.getIsOwner());
     setIsLoading(false);
 
-    // Check localStorage for is_owner flag
-    const savedOwner = localStorage.getItem('is_owner');
-    if (savedOwner === 'true') {
-      setIsOwner(true);
-    }
-
     // Poll for auth state changes (fallback in case the listener fails)
     const interval = setInterval(() => {
       const current = authService.getCurrentUser();
@@ -50,8 +44,8 @@ export function AuthProvider({ children }) {
     return result;
   }, []);
 
-  const signup = useCallback(async (email, username, password, isOwner = false) => {
-    const result = await authService.signUp(email, username, password, isOwner);
+  const signup = useCallback(async (email, username, password) => {
+    const result = await authService.signUp(email, username, password);
     setUser(authService.getCurrentUser());
     setIsOwner(authService.getIsOwner());
     return result;
