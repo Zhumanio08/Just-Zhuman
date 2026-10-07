@@ -7,12 +7,13 @@ import { v4 as uuidv4 } from 'uuid';
  */
 class PostService {
   /**
-   * Fetch all posts, newest first
+   * Fetch all posts, newest first, with like/comment counts and the
+   * current user's like status (batched — no N+1 queries)
    * @param {number} [limit=20]
    * @param {number} [offset=0]
    */
   async getPosts(limit = 20, offset = 0) {
-    let { data, error } = await supabase
+    const { data, error } = await supabase
       .from('posts')
       .select(
         `
@@ -23,30 +24,51 @@ class PostService {
           username,
           is_owner
         )
-      `,
-        { count: 'exact' }
+      `
       )
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw error;
 
-    // Fetch like counts for each post in batch
-    const postsWithLikes = await Promise.all(
-      (data || []).map(async (post) => {
-        const { count } = await supabase
-          .from('likes')
-          .select('*', { count: 'exact', head: true })
-          .eq('post_id', post.id);
-        return { ...post, like_count: count || 0 };
-      })
-    );
+    const posts = data || [];
+    if (posts.length === 0) return [];
 
-    return postsWithLikes;
+    const postIds = posts.map((post) => post.id);
+
+    // Batch fetch: all likes + all comments for the visible posts
+    const [likesResult, commentsResult] = await Promise.all([
+      supabase.from('likes').select('post_id, user_id').in('post_id', postIds),
+      supabase.from('comments').select('post_id').in('post_id', postIds),
+    ]);
+
+    if (likesResult.error) throw likesResult.error;
+    if (commentsResult.error) throw commentsResult.error;
+
+    const { data: { user } = {} } = await supabase.auth.getUser();
+
+    const likeCounts = {};
+    const likedPostIds = new Set();
+    (likesResult.data || []).forEach((like) => {
+      likeCounts[like.post_id] = (likeCounts[like.post_id] || 0) + 1;
+      if (user && like.user_id === user.id) likedPostIds.add(like.post_id);
+    });
+
+    const commentCounts = {};
+    (commentsResult.data || []).forEach((comment) => {
+      commentCounts[comment.post_id] = (commentCounts[comment.post_id] || 0) + 1;
+    });
+
+    return posts.map((post) => ({
+      ...post,
+      like_count: likeCounts[post.id] || 0,
+      comment_count: commentCounts[post.id] || 0,
+      is_liked: likedPostIds.has(post.id),
+    }));
   }
 
   /**
-   * Fetch a single post by ID with owner info and like count
+   * Fetch a single post by ID with owner info, counts, and like status
    */
   async getPostById(postId) {
     const { data, error } = await supabase
@@ -67,12 +89,29 @@ class PostService {
 
     if (error) throw error;
 
-    const { count } = await supabase
-      .from('likes')
-      .select('*', { count: 'exact', head: true })
-      .eq('post_id', data.id);
+    const [{ count: likeCount }, { count: commentCount }] = await Promise.all([
+      supabase.from('likes').select('*', { count: 'exact', head: true }).eq('post_id', data.id),
+      supabase.from('comments').select('*', { count: 'exact', head: true }).eq('post_id', data.id),
+    ]);
 
-    return { ...data, like_count: count || 0 };
+    const { data: { user } = {} } = await supabase.auth.getUser();
+    let isLiked = false;
+    if (user) {
+      const { data: myLike } = await supabase
+        .from('likes')
+        .select('id')
+        .eq('post_id', data.id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      isLiked = !!myLike;
+    }
+
+    return {
+      ...data,
+      like_count: likeCount || 0,
+      comment_count: commentCount || 0,
+      is_liked: isLiked,
+    };
   }
 
   /**
@@ -100,7 +139,7 @@ class PostService {
   }
 
   /**
-   * Update a post (owner only)
+   * Update a post (only the author can — enforced by RLS)
    */
   async updatePost(postId, title, description, imageUrl = null, videoUrl = null) {
     const { data, error } = await supabase.from('posts').update({
@@ -109,7 +148,7 @@ class PostService {
       image_url: imageUrl,
       video_url: videoUrl,
       updated_at: new Date().toISOString(),
-    }).select().single();
+    }).eq('id', postId).select().single();
 
     if (error) throw error;
 
@@ -117,7 +156,7 @@ class PostService {
   }
 
   /**
-   * Delete a post (owner only)
+   * Delete a post (only the author can — enforced by RLS)
    */
   async deletePost(postId) {
     const { error } = await supabase.from('posts').delete().eq('id', postId);
@@ -125,18 +164,21 @@ class PostService {
   }
 
   /**
-   * Toggle like on a post
+   * Toggle like on a post for the current user
+   * @returns {Promise<{liked: boolean}>}
    */
-  async toggleLike(postId, userId, username) {
+  async toggleLike(postId) {
     const { data: { user } = {} } = await supabase.auth.getUser();
-    if (!user) throw new Error('No authenticated user');
+    if (!user) throw new Error('You must be signed in to like posts.');
 
-    const { data: existingLike } = await supabase
+    const { data: existingLike, error: selectError } = await supabase
       .from('likes')
-      .select('*')
+      .select('id')
       .eq('post_id', postId)
       .eq('user_id', user.id)
-      .single();
+      .maybeSingle();
+
+    if (selectError) throw selectError;
 
     if (existingLike) {
       // Unlike
@@ -147,20 +189,19 @@ class PostService {
 
       if (error) throw error;
 
-      return { liked: false, like_count: null };
-    } else {
-      // Like
-      const { data, error } = await supabase.from('likes').insert({
-        id: uuidv4(),
-        post_id: postId,
-        user_id: user.id,
-        username: username || user.user_metadata?.username || null,
-      }).select().single();
-
-      if (error) throw error;
-
-      return { liked: true, like_count: null };
+      return { liked: false };
     }
+
+    // Like
+    const { error } = await supabase.from('likes').insert({
+      id: uuidv4(),
+      post_id: postId,
+      user_id: user.id,
+    });
+
+    if (error) throw error;
+
+    return { liked: true };
   }
 
   /**
@@ -183,7 +224,7 @@ class PostService {
       .select('*')
       .eq('post_id', postId)
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
     return !!data;
   }
 }

@@ -17,8 +17,10 @@ class CommentService {
       .select(
         `
         *,
-        users:id,email,username,
-        parent_comment_id
+        users:user_id (
+          id,
+          username
+        )
       `,
         { count: 'exact' }
       )
@@ -51,17 +53,25 @@ class CommentService {
 
   /**
    * Add a comment to a post
+   * (the `username` lives in public.users — it is embedded on read, not stored here)
    */
-  async addComment(postId, userId, username, text, parentCommentId = null, imageUrl = null) {
+  async addComment(postId, userId, text, parentCommentId = null, imageUrl = null) {
     const { data, error } = await supabase.from('comments').insert({
       id: uuidv4(),
       post_id: postId,
       user_id: userId,
-      username: username,
       parent_comment_id: parentCommentId,
       text,
       image_url: imageUrl,
-    }).select().single();
+    }).select(
+      `
+      *,
+      users:user_id (
+        id,
+        username
+      )
+    `
+    ).single();
 
     if (error) throw error;
 
@@ -70,15 +80,20 @@ class CommentService {
 
   /**
    * Update a comment (user only)
+   * Only overwrites image_url when explicitly provided by the caller
    */
-  async updateComment(commentId, text, imageUrl = null) {
+  async updateComment(commentId, text, imageUrl) {
+    const updates = {
+      text,
+      updated_at: new Date().toISOString(),
+    };
+    if (imageUrl !== undefined) {
+      updates.image_url = imageUrl;
+    }
+
     const { data, error } = await supabase
       .from('comments')
-      .update({
-        text,
-        image_url: imageUrl,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updates)
       .select()
       .eq('id', commentId)
       .single();
@@ -109,7 +124,10 @@ class CommentService {
       .select(
         `
         *,
-        users:id,email,username
+        users:user_id (
+          id,
+          username
+        )
       `
       )
       .eq('id', commentId)

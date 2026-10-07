@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { commentService } from '../../services/commentService';
 import CommentForm from './CommentForm';
 
 /**
@@ -46,14 +47,12 @@ export default function CommentThread({ comment, postId, onDelete, theme }) {
     if (!editText.trim()) return;
 
     try {
-      if (onDelete) {
-        // TODO: Call updateComment API
-        setEditing(false);
-      }
+      await commentService.updateComment(comment.id, editText.trim());
+      setEditing(false);
     } catch (err) {
       alert(err.message || 'Failed to edit comment.');
     }
-  }, [editText, onDelete]);
+  }, [comment.id, editText]);
 
   const renderComment = (comment, depth = 0) => {
     const isOwner = user?.id === comment.user_id;
@@ -179,9 +178,7 @@ export default function CommentThread({ comment, postId, onDelete, theme }) {
         {/* Replies */}
         {hasReplies && (
           <div className="mt-3 space-y-3">
-            {comment.replies.map((reply) => (
-              <renderComment key={reply.id} comment={reply} depth={depth + 1} />
-            ))}
+            {comment.replies.map((reply) => renderComment(reply, depth + 1))}
           </div>
         )}
       </div>

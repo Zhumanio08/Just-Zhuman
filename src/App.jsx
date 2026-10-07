@@ -75,6 +75,14 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/edit/:id"
+                element={
+                  <ProtectedRoute>
+                    <PostCreate />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Default redirect */}
               <Route path="/" element={<Navigate to="/feed" replace />} />

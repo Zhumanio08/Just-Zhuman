@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { commentService } from '../../services/commentService';
 
 /**
  * CommentForm Component
@@ -15,14 +16,6 @@ export default function CommentForm({ postId, parentId = null, onAdd }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  if (!user) {
-    return (
-      <div className="text-sm text-gray-500 dark:text-gray-400">
-        <a href="/login" className="text-primary hover:underline">Sign in</a> to join the conversation.
-      </div>
-    );
-  }
-
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     setError('');
@@ -34,25 +27,22 @@ export default function CommentForm({ postId, parentId = null, onAdd }) {
 
     try {
       setIsSubmitting(true);
-      // TODO: Call addComment API
-      // Callback for demo
+      const newComment = await commentService.addComment(
+        postId,
+        user.id,
+        text.trim(),
+        parentId,
+        imageUrl || null
+      );
       if (onAdd) {
-        onAdd({
-          id: 'comment-' + Date.now(),
-          post_id: postId,
-          user_id: user.id,
-          username: user.user_metadata?.username || 'Anonymous',
-          parent_comment_id: parentId,
-          text: text.trim(),
-          image_url: imageUrl || null,
-          created_at: new Date().toISOString(),
-        });
+        onAdd(newComment);
       }
       setText('');
       setImageUrl('');
-      setIsSubmitting(false);
     } catch (err) {
       setError(err.message || 'Failed to add comment.');
+    } finally {
+      setIsSubmitting(false);
     }
   }, [text, imageUrl, postId, parentId, onAdd, user]);
 
@@ -80,6 +70,15 @@ export default function CommentForm({ postId, parentId = null, onAdd }) {
     };
     reader.readAsDataURL(file);
   }, []);
+
+  // Signed-out UI — must come AFTER all hooks to keep hook order stable
+  if (!user) {
+    return (
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        <a href="/login" className="text-primary hover:underline">Sign in</a> to join the conversation.
+      </div>
+    );
+  }
 
   const inputBaseClasses = `w-full px-3 py-2 rounded-lg border
     focus:outline-none focus:ring-2 focus:ring-primary/30

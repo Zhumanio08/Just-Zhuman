@@ -1,14 +1,21 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { postService } from '../../services/postService';
 
 /**
  * PostCreate Component
- * Form for creating a new post (title, description, image, video)
+ * Form for creating a new post — and editing an existing one when
+ * routed to /edit/:id (author only, enforced by RLS)
  */
 export default function PostCreate() {
-  const { isOwner, isLoading: authLoading } = useAuth();
+  const { user, isOwner, isLoading: authLoading } = useAuth();
   const { mode, accentColor } = useTheme();
+  const navigate = useNavigate();
+  const { id: editPostId } = useParams();
+
+  const isEditMode = Boolean(editPostId);
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -16,7 +23,94 @@ export default function PostCreate() {
   const [videoUrl, setVideoUrl] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loadingPost, setLoadingPost] = useState(isEditMode);
+  const [postOwnerId, setPostOwnerId] = useState(null);
 
+  // Edit mode: load the existing post into the form
+  useEffect(() => {
+    if (!editPostId) return undefined;
+
+    let cancelled = false;
+
+    const loadPost = async () => {
+      try {
+        setLoadingPost(true);
+        setError('');
+        const post = await postService.getPostById(editPostId);
+        if (cancelled) return;
+        setTitle(post.title || '');
+        setDescription(post.description || '');
+        setImageUrl(post.image_url || '');
+        setVideoUrl(post.video_url || '');
+        setPostOwnerId(post.owner_id);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err.message || 'Failed to load the post.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingPost(false);
+        }
+      }
+    };
+
+    loadPost();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editPostId]);
+
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    setError('');
+
+    if (!title.trim()) {
+      setError('Title is required.');
+      return;
+    }
+
+    if (!description.trim()) {
+      setError('Description is required.');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const cleanImage = imageUrl.trim() || null;
+      const cleanVideo = videoUrl.trim() || null;
+
+      if (isEditMode) {
+        await postService.updatePost(
+          editPostId,
+          title.trim(),
+          description.trim(),
+          cleanImage,
+          cleanVideo
+        );
+      } else {
+        if (!user) throw new Error('You must be signed in to create a post.');
+        await postService.createPost(
+          user.id,
+          title.trim(),
+          description.trim(),
+          cleanImage,
+          cleanVideo
+        );
+      }
+
+      navigate('/feed');
+    } catch (err) {
+      setError(
+        err.message ||
+          (isEditMode ? 'Failed to update post.' : 'Failed to create post.')
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [title, description, imageUrl, videoUrl, isEditMode, editPostId, user, navigate]);
+
+  // --- Conditional returns (all hooks are declared above) ---
   if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -28,7 +122,18 @@ export default function PostCreate() {
     );
   }
 
-  if (!isOwner) {
+  if (loadingPost) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+          <p className="mt-4 text-sm text-gray-500">Loading post...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isEditMode && !isOwner) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -47,36 +152,24 @@ export default function PostCreate() {
     );
   }
 
-  const handleSubmit = useCallback(async (e) => {
-    e.preventDefault();
-    setError('');
-
-    if (!title.trim()) {
-      setError('Title is required.');
-      return;
-    }
-
-    if (!description.trim()) {
-      setError('Description is required.');
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      // TODO: Call createPost API
-      alert('Post created successfully!');
-      // Reset form
-      setTitle('');
-      setDescription('');
-      setImageUrl('');
-      setVideoUrl('');
-      window.location.href = '/feed';
-    } catch (err) {
-      setError(err.message || 'Failed to create post.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [title, description, imageUrl, videoUrl]);
+  if (isEditMode && postOwnerId && user && postOwnerId !== user.id) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg font-semibold text-gray-900 dark:text-white">Access Denied</p>
+          <p className="mt-2 text-sm text-gray-500">
+            Only the author can edit this post.
+          </p>
+          <a
+            href="/feed"
+            className="mt-4 text-sm text-primary hover:underline"
+          >
+            Back to Feed
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   const inputBaseClasses = `w-full px-3 py-2 rounded-lg border
     focus:outline-none focus:ring-2 focus:ring-primary/30
@@ -90,10 +183,12 @@ export default function PostCreate() {
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-            Create New Post
+            {isEditMode ? 'Edit Post' : 'Create New Post'}
           </h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Share your thoughts, photos, and videos with your audience
+            {isEditMode
+              ? 'Update your post and save the changes'
+              : 'Share your thoughts, photos, and videos with your audience'}
           </p>
         </div>
 
@@ -188,11 +283,13 @@ export default function PostCreate() {
                            focus:outline-none focus:ring-2 focus:ring-primary/50
                            disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? 'Creating...' : 'Create Post'}
+                {isSubmitting
+                  ? (isEditMode ? 'Saving...' : 'Creating...')
+                  : (isEditMode ? 'Save Changes' : 'Create Post')}
               </button>
               <button
                 type="button"
-                onClick={() => window.location.href = '/feed'}
+                onClick={() => navigate('/feed')}
                 className="flex-1 py-2.5 px-4 rounded-lg font-medium
                            text-gray-700 dark:text-gray-300
                            bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600

@@ -1,5 +1,6 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { postService } from '../../services/postService';
 import PostCard from './PostCard';
 
 /**
@@ -12,49 +13,27 @@ export default function PostList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const fetchPosts = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        // TODO: Call getPosts API
-        // In demo mode, show a few sample posts
-        const samplePosts = [
-          {
-            id: '1',
-            title: 'Welcome to Just Zhuman!',
-            description: 'This is my first post on the blog. I am excited to share my thoughts, photos, and videos with you all.',
-            image_url: null,
-            video_url: null,
-            created_at: new Date().toISOString(),
-            owner_id: 'owner-1',
-            users: { username: 'Just Zhuman', id: 'owner-1' },
-            like_count: 0,
-            comment_count: 0,
-          },
-          {
-            id: '2',
-            title: 'My Weekend Trip',
-            description: 'Had an amazing time exploring the mountains this weekend. The scenery was breathtaking and the weather was perfect for hiking.',
-            image_url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=400&fit=crop',
-            video_url: null,
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-            owner_id: 'owner-1',
-            users: { username: 'Just Zhuman', id: 'owner-1' },
-            like_count: 3,
-            comment_count: 2,
-          },
-        ];
-        setPosts(samplePosts);
-      } catch (err) {
-        setError(err.message || 'Failed to fetch posts.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchPosts();
+  const fetchPosts = useCallback(async (showLoader = true) => {
+    try {
+      if (showLoader) setLoading(true);
+      setError('');
+      const data = await postService.getPosts();
+      setPosts(data);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch posts.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchPosts();
+  }, [fetchPosts]);
+
+  const handlePostDeleted = useCallback(() => {
+    // Silent refresh — keep current scroll position, no spinner flash
+    fetchPosts(false);
+  }, [fetchPosts]);
 
   const handleCreatePost = useCallback(() => {
     window.location.href = '/create';
@@ -105,7 +84,7 @@ export default function PostList() {
       {!loading && !error && posts.length > 0 && (
         <div className="space-y-6">
           {posts.map((post) => (
-            <PostCard key={post.id} post={post} />
+            <PostCard key={post.id} post={post} onDeleted={handlePostDeleted} />
           ))}
         </div>
       )}
