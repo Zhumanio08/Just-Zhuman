@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { commentService } from '../../services/commentService';
 import CommentForm from './CommentForm';
 
@@ -12,6 +13,7 @@ import CommentForm from './CommentForm';
 export default function CommentThread({ comment, postId, onDelete, theme }) {
   const { user } = useAuth();
   const { mode, accentColor } = useTheme();
+  const { t, dateLocale } = useLanguage();
 
   const [showReplyForm, setShowReplyForm] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -20,14 +22,14 @@ export default function CommentThread({ comment, postId, onDelete, theme }) {
   const formatDate = (dateString) => {
     try {
       const date = new Date(dateString);
-      return formatDistanceToNow(date, { addSuffix: true });
+      return formatDistanceToNow(date, { addSuffix: true, locale: dateLocale });
     } catch {
       return '';
     }
   };
 
   const handleDelete = useCallback(async () => {
-    if (!confirm('Are you sure you want to delete this comment?')) return;
+    if (!confirm(t('deleteCommentConfirm'))) return;
 
     try {
       if (onDelete) {
@@ -50,9 +52,9 @@ export default function CommentThread({ comment, postId, onDelete, theme }) {
       await commentService.updateComment(comment.id, editText.trim());
       setEditing(false);
     } catch (err) {
-      alert(err.message || 'Failed to edit comment.');
+      alert(err.message || t('editCommentFailed'));
     }
-  }, [comment.id, editText]);
+  }, [comment.id, editText, t]);
 
   const renderComment = (comment, depth = 0) => {
     const isOwner = user?.id === comment.user_id;
@@ -118,7 +120,7 @@ export default function CommentThread({ comment, postId, onDelete, theme }) {
                   <div className="mt-2 rounded-lg overflow-hidden">
                     <img
                       src={comment.image_url}
-                      alt="Comment"
+                      alt={t('commentImgAlt')}
                       className="max-h-48 w-full object-cover"
                     />
                   </div>
@@ -132,13 +134,13 @@ export default function CommentThread({ comment, postId, onDelete, theme }) {
                         onClick={handleEdit}
                         className="text-xs text-gray-500 hover:text-primary transition-colors"
                       >
-                        Edit
+                        {t('edit')}
                       </button>
                       <button
                         onClick={handleDelete}
                         className="text-xs text-red-500 hover:text-red-700 transition-colors"
                       >
-                        Delete
+                        {t('delete')}
                       </button>
                     </>
                   )}
@@ -147,14 +149,14 @@ export default function CommentThread({ comment, postId, onDelete, theme }) {
                       onClick={handleDelete}
                       className="text-xs text-red-500 hover:text-red-700 transition-colors"
                     >
-                      Delete
+                      {t('delete')}
                     </button>
                   )}
                   <button
                     onClick={() => setShowReplyForm((prev) => !prev)}
                     className="text-xs text-gray-500 hover:text-primary transition-colors"
                   >
-                    Reply
+                    {t('reply')}
                   </button>
                 </div>
               </>
@@ -186,11 +188,17 @@ export default function CommentThread({ comment, postId, onDelete, theme }) {
   };
 
   const rootComments = comment.replies?.filter((r) => !r.parent_comment_id) || [];
-  const commentWithReplies = { ...comment, replies: [] };
+  const threadComments = rootComments.length > 0 ? rootComments : (comment.replies || []);
 
   return (
     <div id="comment-thread" className="space-y-4">
-      {comment && renderComment(commentWithReplies, 0)}
+      {comment && renderComment(comment, 0)}
+
+      {threadComments.length > 0 && (
+        <div className="space-y-4 mt-4">
+          {threadComments.map((reply) => renderComment(reply, 1))}
+        </div>
+      )}
 
       <div id="write-reply">
         <CommentForm postId={postId} onAdd={(newComment) => {}} />

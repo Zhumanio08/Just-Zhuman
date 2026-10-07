@@ -97,7 +97,10 @@ export function ThemeProvider({ children }) {
   }, []);
 
   const setAccent = useCallback((color) => {
-    setAccentColor(color);
+    if (typeof color !== 'string') return;
+    const trimmed = color.trim().toLowerCase();
+    if (!/^#[0-9a-f]{6}$/.test(trimmed)) return;
+    setAccentColor(trimmed);
   }, []);
 
   const value = {

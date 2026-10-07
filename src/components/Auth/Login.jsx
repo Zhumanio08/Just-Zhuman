@@ -1,14 +1,18 @@
 import React, { useState, useCallback } from 'react';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useLanguage } from '../../context/LanguageContext';
 
 /**
  * Login Component
  * Email/username + password authentication
  */
 export default function Login() {
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, user } = useAuth();
   const { mode, accentColor } = useTheme();
+  const { t } = useLanguage();
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     identifier: '',
@@ -32,12 +36,14 @@ export default function Login() {
       // Allow both email and username
       const identifier = formData.identifier.trim();
       await login(identifier, formData.password);
+      // Requirement: after successful login go straight to the feed
+      navigate('/feed', { replace: true });
     } catch (err) {
-      setError(err.message || 'Failed to login. Please check your credentials.');
+      setError(err.message || t('loginFailed'));
     } finally {
       setIsSubmitting(false);
     }
-  }, [formData, login]);
+  }, [formData, login, navigate, t]);
 
   const inputBaseClasses = `w-full px-3 py-2 rounded-lg border
     focus:outline-none focus:ring-2 focus:ring-primary/30
@@ -46,17 +52,22 @@ export default function Login() {
       ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500'
       : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400'}`;
 
+  // Already signed in — go to the feed
+  if (user) {
+    return <Navigate to="/feed" replace />;
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8
                     bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <div className="max-w-md w-full">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-            Welcome back
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
+            {t('loginTitle')}
           </h1>
           <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-            Sign in to your Just Zhuman account
+            {t('loginSubtitle')}
           </p>
         </div>
 
@@ -71,7 +82,7 @@ export default function Login() {
             {/* Identifier field (email or username) */}
             <div>
               <label htmlFor="identifier" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Email or Username
+                {t('emailOrUsername')}
               </label>
               <input
                 type="text"
@@ -80,7 +91,7 @@ export default function Login() {
                 value={formData.identifier}
                 onChange={handleChange}
                 className={inputBaseClasses}
-                placeholder="Enter your email or username"
+                placeholder={t('emailOrUsernamePh')}
                 autoComplete="username"
                 required
               />
@@ -89,7 +100,7 @@ export default function Login() {
             {/* Password field */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Password
+                {t('password')}
               </label>
               <input
                 type="password"
@@ -98,7 +109,7 @@ export default function Login() {
                 value={formData.password}
                 onChange={handleChange}
                 className={inputBaseClasses}
-                placeholder="Enter your password"
+                placeholder={t('passwordPh')}
                 autoComplete="current-password"
                 required
               />
@@ -113,18 +124,18 @@ export default function Login() {
                          focus:outline-none focus:ring-2 focus:ring-primary/50
                          disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? 'Signing in...' : 'Sign In'}
+              {isSubmitting ? t('signingIn') : t('signInBtn')}
             </button>
           </form>
 
           {/* Signup link */}
           <p className="mt-6 text-center text-sm text-gray-600 dark:text-gray-400">
-            Don't have an account?{' '}
+            {t('noAccount')}{' '}
             <a
               href="/signup"
               className="text-primary hover:underline underline-offset-4 font-medium"
             >
-              Sign up
+              {t('signUpLink')}
             </a>
           </p>
         </div>

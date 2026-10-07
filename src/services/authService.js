@@ -131,6 +131,25 @@ class AuthService {
   }
 
   /**
+   * Fetch the public profile row (username, created_at) for a user.
+   * Used e.g. for the "Member since" stat on the Profile page.
+   */
+  async getProfile(userId) {
+    if (!userId) return null;
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, username, created_at')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Failed to fetch profile:', error);
+      return null;
+    }
+    return data;
+  }
+
+  /**
    * Get current session
    */
   getSession() {

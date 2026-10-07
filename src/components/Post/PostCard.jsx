@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useLanguage } from '../../context/LanguageContext';
 import { postService } from '../../services/postService';
 import { commentService } from '../../services/commentService';
 import CommentForm from '../Comment/CommentForm';
@@ -15,6 +16,7 @@ import CommentForm from '../Comment/CommentForm';
 export default function PostCard({ post, onDeleted }) {
   const { user } = useAuth();
   const { mode } = useTheme();
+  const { t, dateLocale } = useLanguage();
   const navigate = useNavigate();
 
   const [liked, setLiked] = useState(post.is_liked || false);
@@ -52,7 +54,7 @@ export default function PostCard({ post, onDeleted }) {
       setCommentCount(countComments(data));
       setActionError('');
     } catch (err) {
-      setActionError(err.message || 'Failed to load comments.');
+      setActionError(err.message || t('loadCommentsFailed'));
     } finally {
       setCommentsLoading(false);
     }
@@ -79,19 +81,19 @@ export default function PostCard({ post, onDeleted }) {
       // Rollback on failure
       setLiked(previousLiked);
       setLikeCount(previousCount);
-      setActionError(err.message || 'Failed to update like.');
+      setActionError(err.message || t('likeFailed'));
     }
   }, [user, liked, likeCount, post.id]);
 
   const handleDelete = useCallback(async () => {
-    if (!confirm('Are you sure you want to delete this post?')) return;
+    if (!confirm(t('deletePostConfirm'))) return;
 
     try {
       setIsDeleting(true);
       await postService.deletePost(post.id);
       if (onDeleted) onDeleted(post.id);
     } catch (err) {
-      alert(err.message || 'Failed to delete post.');
+      alert(err.message || t('deletePostFailed'));
     } finally {
       setIsDeleting(false);
     }
@@ -110,7 +112,7 @@ export default function PostCard({ post, onDeleted }) {
       setCommentText('');
       await loadComments();
     } catch (err) {
-      setActionError(err.message || 'Failed to add comment.');
+      setActionError(err.message || t('addCommentFailed'));
     } finally {
       setIsSubmittingComment(false);
     }
@@ -125,25 +127,25 @@ export default function PostCard({ post, onDeleted }) {
       setEditCommentText('');
       await loadComments();
     } catch (err) {
-      setActionError(err.message || 'Failed to edit comment.');
+      setActionError(err.message || t('editCommentFailed'));
     }
   }, [editCommentText, loadComments]);
 
   const handleDeleteComment = useCallback(async (commentId) => {
-    if (!confirm('Are you sure you want to delete this comment?')) return;
+    if (!confirm(t('deleteCommentConfirm'))) return;
 
     try {
       await commentService.deleteComment(commentId);
       await loadComments();
     } catch (err) {
-      setActionError(err.message || 'Failed to delete comment.');
+      setActionError(err.message || t('deleteCommentFailed'));
     }
   }, [loadComments]);
 
   const formatDate = (dateString) => {
     try {
       const date = new Date(dateString);
-      return formatDistanceToNow(date, { addSuffix: true });
+      return formatDistanceToNow(date, { addSuffix: true, locale: dateLocale });
     } catch {
       return '';
     }
@@ -151,11 +153,11 @@ export default function PostCard({ post, onDeleted }) {
 
   const commentsAnchorId = `comments-${post.id}`;
   const canManagePost = !!user && user.id === post.owner_id;
-  const ownerName = post.users?.username || 'Anonymous';
+  const ownerName = post.users?.username || t('anonymous');
   // Recursive comment renderer (supports nested replies, edit, delete, reply)
   const renderComment = (node, depth = 0) => {
     const isMine = !!user && user.id === node.user_id;
-    const authorName = node.users?.username || 'Anonymous';
+    const authorName = node.users?.username || t('anonymous');
     const isEditing = editingCommentId === node.id;
 
     return (
@@ -171,9 +173,9 @@ export default function PostCard({ post, onDeleted }) {
               <span className="text-sm font-medium text-gray-900 dark:text-white">{authorName}</span>
               <span className="text-xs text-gray-500 dark:text-gray-400">{formatDate(node.created_at)}</span>
               {node.updated_at && node.updated_at !== node.created_at && (
-                <span className="text-xs text-gray-400 dark:text-gray-500">(edited)</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">{t('edited')}</span>
               )}
-              {isMine && <span className="text-xs text-primary">(You)</span>}
+              {isMine && <span className="text-xs text-primary">{t('youLabel')}</span>}
             </div>
 
             {isEditing ? (
@@ -192,13 +194,13 @@ export default function PostCard({ post, onDeleted }) {
                     onClick={() => handleSaveCommentEdit(node.id)}
                     className="px-3 py-1 rounded text-xs font-medium text-white bg-primary hover:bg-primary-dark transition-colors"
                   >
-                    Save
+                    {t('save')}
                   </button>
                   <button
                     onClick={() => setEditingCommentId(null)}
                     className="px-3 py-1 rounded text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
                   >
-                    Cancel
+                    {t('cancel')}
                   </button>
                 </div>
               </div>
@@ -207,7 +209,7 @@ export default function PostCard({ post, onDeleted }) {
                 <p className="mt-1 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{node.text}</p>
 
                 {node.image_url && (
-                  <img src={node.image_url} alt="Comment attachment" className="mt-2 max-h-48 w-full object-cover rounded-lg" />
+                  <img src={node.image_url} alt={t('commentImgAlt')} className="mt-2 max-h-48 w-full object-cover rounded-lg" />
                 )}
 
                 <div className="flex items-center gap-3 mt-2">
@@ -220,13 +222,13 @@ export default function PostCard({ post, onDeleted }) {
                         }}
                         className="text-xs text-gray-500 hover:text-primary transition-colors"
                       >
-                        Edit
+                        {t('edit')}
                       </button>
                       <button
                         onClick={() => handleDeleteComment(node.id)}
                         className="text-xs text-red-500 hover:text-red-700 transition-colors"
                       >
-                        Delete
+                        {t('delete')}
                       </button>
                     </>
                   )}
@@ -235,7 +237,7 @@ export default function PostCard({ post, onDeleted }) {
                       onClick={() => setReplyToId(replyToId === node.id ? null : node.id)}
                       className="text-xs text-gray-500 hover:text-primary transition-colors"
                     >
-                      Reply
+                      {t('reply')}
                     </button>
                   )}
                 </div>
@@ -291,7 +293,7 @@ export default function PostCard({ post, onDeleted }) {
               className="px-3 py-1 rounded text-xs font-medium text-gray-600 dark:text-gray-300
                          hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             >
-              Edit
+              {t('edit')}
             </button>
             <button
               onClick={handleDelete}
@@ -300,7 +302,7 @@ export default function PostCard({ post, onDeleted }) {
                          hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors
                          disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isDeleting ? 'Deleting...' : 'Delete'}
+              {isDeleting ? t('deleting') : t('delete')}
             </button>
           </div>
         )}
@@ -332,7 +334,7 @@ export default function PostCard({ post, onDeleted }) {
                 controls
                 className="max-h-80 w-full rounded-lg shadow"
               >
-                Your browser does not support the video tag.
+                {t('videoNotSupported')}
               </video>
             )}
           </div>
@@ -343,7 +345,7 @@ export default function PostCard({ post, onDeleted }) {
           <button
             onClick={handleLike}
             disabled={!user}
-            title={user ? 'Like this post' : 'Sign in to like posts'}
+            title={user ? t('likeThisPost') : t('signInToLike')}
             className={`flex items-center gap-1 px-2 py-1 rounded transition-colors disabled:cursor-not-allowed
               ${liked ? 'text-primary bg-primary/10' : 'hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-700'}`}
           >
@@ -364,14 +366,14 @@ export default function PostCard({ post, onDeleted }) {
       <div id={commentsAnchorId} className="border-t border-gray-200 dark:border-gray-700 px-4 py-4 scroll-mt-20">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
-            Comments ({commentCount})
+            {t('commentsCount', { count: commentCount })}
           </h3>
           {user && (
             <button
               onClick={() => setIsCommenting((prev) => !prev)}
               className="text-xs text-primary hover:underline"
             >
-              Add comment
+              {t('addComment')}
             </button>
           )}
         </div>
@@ -388,7 +390,7 @@ export default function PostCard({ post, onDeleted }) {
             <textarea
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Write a comment..."
+              placeholder={t('writeCommentPh')}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600
                          bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white
                          focus:outline-none focus:ring-2 focus:ring-primary/30 resize-y"
@@ -401,14 +403,14 @@ export default function PostCard({ post, onDeleted }) {
                 className="px-3 py-1.5 rounded text-sm font-medium text-white bg-primary hover:bg-primary-dark transition-colors
                            disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmittingComment ? 'Posting...' : 'Post comment'}
+                {isSubmittingComment ? t('posting') : t('postCommentBtn')}
               </button>
               <button
                 type="button"
                 onClick={() => setIsCommenting(false)}
                 className="px-3 py-1.5 rounded text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
               >
-                Cancel
+                {t('cancel')}
               </button>
             </div>
           </form>
@@ -419,13 +421,13 @@ export default function PostCard({ post, onDeleted }) {
           {commentsLoading && (
             <div className="flex items-center gap-2 py-2">
               <span className="inline-block w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Loading comments...</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">{t('loadingComments')}</p>
             </div>
           )}
 
           {!commentsLoading && comments.length === 0 && (
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              No comments yet. Be the first to comment!
+              {t('noComments')}
             </p>
           )}
 
