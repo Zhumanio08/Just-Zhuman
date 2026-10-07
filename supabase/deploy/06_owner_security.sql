@@ -58,6 +58,20 @@ WHERE lower(coalesce(raw_user_meta_data ->> 'is_owner', '')) IN ('true', 't', '1
   );
 
 -- ---------------------------------------------------------------------------
+-- IMPORTANT (why these functions are SECURITY DEFINER):
+-- The auth.users triggers run during signup as GoTrue's internal role
+-- `supabase_auth_admin`, which has NO privileges on the `public` schema.
+-- SECURITY INVOKER functions (the default) therefore fail with a permission
+-- error and Supabase Auth returns the generic "Database error saving new
+-- user". Declaring the functions SECURITY DEFINER (owner: postgres, the SQL
+-- Editor role) + a pinned search_path is Supabase's documented fix.
+--
+-- Because a SECURITY DEFINER function executes as its owner, `current_user`
+-- would ALWAYS be 'postgres' inside it. The privilege checks below therefore
+-- use `session_user` (the actual login role) so they still block API roles.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
 -- 2. New signups can NEVER set is_owner = true (public.users)
 --    Covers direct PostgREST inserts.
 -- ---------------------------------------------------------------------------
@@ -67,7 +81,9 @@ BEGIN
   NEW.is_owner := FALSE;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = '';
 
 DROP TRIGGER IF EXISTS trg_users_no_self_owner_insert ON public.users;
 CREATE TRIGGER trg_users_no_self_owner_insert
@@ -78,18 +94,21 @@ CREATE TRIGGER trg_users_no_self_owner_insert
 -- ---------------------------------------------------------------------------
 -- 3. Users can NEVER escalate their own is_owner (public.users)
 --    RLS allows users to UPDATE their own row, so block the flag here.
---    Grants are allowed only from the SQL Editor / service role.
+--    session_user: 'postgres' (SQL Editor) is allowed to grant; API roles
+--    (session_user = 'authenticator') are not.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.block_owner_escalation()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.is_owner IS TRUE AND OLD.is_owner IS FALSE
-     AND current_user NOT IN ('postgres', 'service_role', 'supabase_admin') THEN
+     AND session_user NOT IN ('postgres', 'service_role', 'supabase_admin') THEN
     NEW.is_owner := FALSE;
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = '';
 
 DROP TRIGGER IF EXISTS trg_users_block_owner_escalation ON public.users;
 CREATE TRIGGER trg_users_block_owner_escalation
@@ -110,7 +129,9 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = '';
 
 DROP TRIGGER IF EXISTS trg_auth_users_strip_owner_insert ON auth.users;
 CREATE TRIGGER trg_auth_users_strip_owner_insert
@@ -121,19 +142,21 @@ CREATE TRIGGER trg_auth_users_strip_owner_insert
 -- ---------------------------------------------------------------------------
 -- 5. Metadata can NEVER be escalated to owner after signup (auth.users)
 --    Blocks e.g. supabase.auth.updateUser({ data: { is_owner: true } }).
---    Grants allowed only from the SQL Editor (postgres) / service role.
+--    session_user: only 'postgres' (SQL Editor) may grant.
 -- ---------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.block_owner_escalation_on_auth()
 RETURNS TRIGGER AS $$
 BEGIN
   IF lower(coalesce(NEW.raw_user_meta_data ->> 'is_owner', '')) IN ('true', 't', '1')
      AND lower(coalesce(OLD.raw_user_meta_data ->> 'is_owner', '')) NOT IN ('true', 't', '1')
-     AND current_user NOT IN ('postgres', 'service_role', 'supabase_admin') THEN
+     AND session_user NOT IN ('postgres', 'service_role', 'supabase_admin') THEN
     NEW.raw_user_meta_data := NEW.raw_user_meta_data || '{"is_owner": false}'::jsonb;
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = '';
 
 DROP TRIGGER IF EXISTS trg_auth_users_block_owner_escalation ON auth.users;
 CREATE TRIGGER trg_auth_users_block_owner_escalation
