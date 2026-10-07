@@ -20,6 +20,7 @@ export function AuthProvider({ children }) {
     const currentUser = authService.getCurrentUser();
     setUser(currentUser);
     setIsOwner(authService.isOwner());
+    setIsLoading(false);
 
     // Check localStorage for is_owner flag
     const savedOwner = localStorage.getItem('is_owner');
